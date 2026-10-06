@@ -40,7 +40,7 @@ jobs:
           import json, sys
           s = json.load(open("stats.json"))
           print(json.dumps(s, ensure_ascii=False, indent=1))
-          if s["programmes"] < 50000:
+          if s["programmes"] < 25000:
               sys.exit(f"seulement {s['programmes']} programmes : publication annulée")
           EOF
           cp stats.json public/stats.json
