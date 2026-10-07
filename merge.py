@@ -244,6 +244,10 @@ def main():
         if call:
             by_callsign.setdefault(call.group(1), set()).add(cid)
 
+    # Chaînes pour adultes : le panel leur colle des tvg-id sans rapport (« beinsports6.qa » sur
+    # une chaîne XXX → du Moto2 dans le guide). Aucun programme plutôt qu'un faux.
+    no_guide = {cid for cid, gs in groups_by_id.items() if gs <= {"For Adults"}}
+
     def in_scope(cid, scope):
         return any(g.startswith(scope) for g in groups_by_id.get(cid, ()))
 
@@ -316,7 +320,7 @@ def main():
                     title = ""
                 if targets and start and stop and title and stop > win_start and start < win_end:
                     desc = (el.findtext("desc") or "").strip()
-                    for t in targets - covered:
+                    for t in targets - covered - no_guide:
                         if t in filler:     # bouche-trou d'une source précédente : remplacé
                             programmes.pop(t, None)
                             filler.discard(t)
@@ -336,7 +340,7 @@ def main():
         print(json.dumps(st, ensure_ascii=False), file=sys.stderr)
 
     # Chaînes restées vides : créneaux d'événement et boucles 24/7, lus dans le nom.
-    named = programmes_from_names(live, cats, set(programmes), now, win_start, win_end)
+    named = programmes_from_names(live, cats, set(programmes) | no_guide, now, win_start, win_end)
     programmes.update(named)
     st = {"source": "noms des chaînes", "programmes": sum(len(v) for v in named.values()), "chaines": len(named)}
     stats["sources"].append(st)
