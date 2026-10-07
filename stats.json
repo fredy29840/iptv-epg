@@ -2,48 +2,53 @@
  "sources": [
   {
    "source": "panel",
-   "programmes": 30883,
+   "programmes": 46864,
    "chaines": 1243,
    "par_nom": 0,
-   "bouche_trou": 46,
-   "secondes": 6.6
+   "bouche_trou": 44,
+   "secondes": 7.0
   },
   {
    "source": "https://xmltvfr.fr/xmltv/xmltv.xml.gz",
-   "programmes": 15468,
-   "chaines": 128,
+   "programmes": 15291,
+   "chaines": 126,
    "par_nom": 148,
    "bouche_trou": 31,
-   "secondes": 4.8
+   "secondes": 4.2
   },
   {
    "source": "https://iptv-epg.org/files/epg-fr.xml.gz",
-   "programmes": 1887,
+   "programmes": 1839,
    "chaines": 35,
    "par_nom": 122,
    "bouche_trou": 27,
-   "secondes": 1.2
+   "secondes": 1.9
   },
   {
    "source": "https://www.open-epg.com/files/france1.xml.gz",
-   "programmes": 284,
+   "programmes": 269,
    "chaines": 10,
    "par_nom": 145,
    "bouche_trou": 4,
-   "secondes": 2.0
+   "secondes": 2.6
   },
   {
    "source": "https://epgshare01.online/epgshare01/epg_ripper_FR1.xml.gz",
-   "programmes": 1032,
+   "programmes": 1005,
    "chaines": 25,
    "par_nom": 201,
    "bouche_trou": 19,
-   "secondes": 1.5
+   "secondes": 1.3
+  },
+  {
+   "source": "noms des chaînes",
+   "programmes": 9681,
+   "chaines": 1543
   }
  ],
- "genere": "20261006235443 +0000",
- "chaines": 1377,
- "programmes": 48510,
- "taille_octets": 2203217,
- "duree_s": 18.9
+ "genere": "20261007014155 +0000",
+ "chaines": 2920,
+ "programmes": 73861,
+ "taille_octets": 2931416,
+ "duree_s": 20.8
 }
