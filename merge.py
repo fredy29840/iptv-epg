@@ -8,7 +8,8 @@ Même logique que XtreamRepository.syncXmlTv (côté télé), faite une fois pou
     offres ») : laissé aux sources suivantes ;
   - correspondance par tvg-id (casse ignorée), sinon par nom normalisé (EpgNames.kt) ;
   - chaînes sans tvg-id → identifiant « name:<nom> », identique à celui de l'appli ;
-  - associations manuelles (manual.json) : id appli → id de chaîne d'une source.
+  - associations manuelles (manual.json) : id appli → id de chaîne d'une source ;
+  - chaînes restées vides : créneaux d'événement et boucles 24/7, programme lu dans le nom.
 Sortie : seulement les chaînes du panel, fenêtre -6 h → +72 h (WINDOW_BEFORE_HOURS /
 WINDOW_AFTER_HOURS), ids = ceux de l'appli.
 
@@ -28,6 +29,7 @@ import unicodedata
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 UA = "VLC/3.0.18 LibVLC/3.0.18"
 SOURCES = [
@@ -84,6 +86,99 @@ def parse_time(raw: str):
         except ValueError:
             pass
     return None
+
+
+# --- Programmes tirés du nom des chaînes ---------------------------------------------------
+# Les créneaux d'événement n'ont aucun guide : l'événement est écrit dans le nom
+# (« US - NHL GAME 01 : PREDATORS @ MAPLE LEAFS OCT 6 – 7:00 PM ET / 12:00 AM UK »).
+# « 01 : » est un numéro de créneau, « 23:00 » une heure.
+SLOT = re.compile(r"^.*?\b\d{1,3}\s*:(?!\d{2}\b)\s*(.*)$")
+LANG_PREFIX = re.compile(r"^\s*[A-Z]{2,4}\s*-\s*")
+DATE = re.compile(r"\b(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|SEPT|OCT|NOV|DEC)\s+(\d{1,2})\b")
+TIME_12 = re.compile(r"\b(\d{1,2}):(\d{2})\s*([AP]M)\s*(ET|UK|FR)\b")
+TIME_24 = re.compile(r"\b(\d{1,2}):(\d{2})\s*(CET|CEST)\b")
+MONTHS = {m: i + 1 for i, m in enumerate("JAN FEB MAR APR MAY JUN JUL AUG SEP OCT NOV DEC".split())}
+MONTHS["SEPT"] = 9
+ZONES = {"ET": "America/New_York", "UK": "Europe/London", "FR": "Europe/Paris",
+         "CET": "Europe/Paris", "CEST": "Europe/Paris"}
+QUALITY_TAIL = re.compile(r"\s*\b(FHD|UHD|HD|SD|HEVC|4K)\b\s*$")
+NO_EVENT = re.compile(r"^(NO (MATCH|EVENT|GAME)|OFF ?AIR|TBA|TBD)\b")
+EVENT_HOURS = 3
+BLOCK_HOURS = 6
+
+
+def event_from_name(name: str, now: datetime):
+    """(titre, début) lu dans le nom ; début None si aucun horaire. None si rien d'exploitable."""
+    up = name.upper()
+    slot = SLOT.match(up)
+    body = slot.group(1) if slot else LANG_PREFIX.sub("", up)
+    times = list(TIME_12.finditer(body))
+    t = next((m for m in times if m.group(4) == "ET"), times[0] if times else None) or TIME_24.search(body)
+    if t is None:
+        # Sans horaire, seul un créneau numéroté porte un événement (sinon c'est une chaîne normale).
+        title = body.strip(" -–—|/•") if slot else ""
+        return (title, None) if title and not NO_EVENT.match(title) else None
+    d = DATE.search(body)
+    first = min(m.start() for m in ([d] if d else []) + times + [t])
+    title = body[:first].strip(" -–—|/•:")
+    if "(" not in title:
+        title = title.rstrip(" )")
+    if not title or NO_EVENT.match(title):
+        return None
+    hour, minute = int(t.group(1)), int(t.group(2))
+    if t.re is TIME_12:
+        hour = hour % 12 + (12 if t.group(3) == "PM" else 0)
+        zone = ZoneInfo(ZONES[t.group(4)])
+    else:
+        zone = ZoneInfo(ZONES[t.group(3)])
+    if hour > 23 or minute > 59:
+        return None
+    local_now = now.astimezone(zone)
+    if d:   # sans année : celle qui tombe le plus près d'aujourd'hui
+        cands = []
+        for y in (local_now.year - 1, local_now.year, local_now.year + 1):
+            try:
+                cands.append(datetime(y, MONTHS[d.group(1)], int(d.group(2)), hour, minute, tzinfo=zone))
+            except ValueError:
+                pass
+    else:   # sans date : l'occurrence la plus proche de maintenant
+        base = local_now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        cands = [base + timedelta(days=k) for k in (-1, 0, 1)]
+    if not cands:
+        return None
+    return title, min(cands, key=lambda c: abs(c - now))
+
+
+def programmes_from_names(live, categories, taken, now, win_start, win_end):
+    """Chaînes encore sans guide → programmes fabriqués depuis leur nom. id appli → [(début, fin, titre, desc)]."""
+    out = {}
+    block = timedelta(hours=BLOCK_HOURS)
+    first_block = win_start.replace(minute=0, second=0, microsecond=0)
+    first_block -= timedelta(hours=first_block.hour % BLOCK_HOURS)
+    for s in live:
+        name = (s.get("name") or "").strip()
+        cid = (s.get("epg_channel_id") or "").strip() or synthetic_id(name)
+        if not cid or cid in taken or cid in out or name.count("#") >= 4:
+            continue
+        ev = event_from_name(name, now)
+        if ev is None and "24/7" in (categories.get(str(s.get("category_id")), "") + name):
+            # Boucle 24/7 : le titre de la boucle sert de programme permanent.
+            title = QUALITY_TAIL.sub("", LANG_PREFIX.sub("", name.upper())).split("|")[-1].strip(" -–—")
+            ev = (title, None) if title else None
+        if ev is None:
+            continue
+        title, start = ev
+        if start is not None:
+            stop = start + timedelta(hours=EVENT_HOURS)
+            if stop > win_start and start < win_end:
+                out[cid] = [(start, stop, title, name)]
+        else:
+            progs, t = [], first_block
+            while t < win_end:
+                progs.append((t, t + block, title, name))
+                t += block
+            out[cid] = progs
+    return out
 
 
 # --- Fusion --------------------------------------------------------------------------------
@@ -191,6 +286,19 @@ def main():
               "par_nom": by_name_hits, "bouche_trou": len(new_filler), "secondes": round(time.time() - ts, 1)}
         stats["sources"].append(st)
         print(json.dumps(st, ensure_ascii=False), file=sys.stderr)
+
+    # Chaînes restées vides : créneaux d'événement et boucles 24/7, lus dans le nom.
+    try:
+        cats = {str(c.get("category_id")): c.get("category_name") or ""
+                for c in json.loads(fetch(f"{host}/player_api.php?username={user}&password={pwd}&action=get_live_categories"))}
+    except Exception as e:  # sans les groupes, seules les boucles 24/7 nommées ainsi sont reconnues
+        cats = {}
+        print(f"groupes : ERREUR {e}", file=sys.stderr)
+    named = programmes_from_names(live, cats, set(programmes), now, win_start, win_end)
+    programmes.update(named)
+    st = {"source": "noms des chaînes", "programmes": sum(len(v) for v in named.values()), "chaines": len(named)}
+    stats["sources"].append(st)
+    print(json.dumps(st, ensure_ascii=False), file=sys.stderr)
 
     # Écriture XMLTV (ids appli, triés).
     def fmt(dt):

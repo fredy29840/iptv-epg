@@ -1,6 +1,6 @@
 # iptv-epg
 
-Guide TV fusionné (panel + sources XMLTV publiques), régénéré chaque nuit par GitHub Actions
+Guide TV fusionné (panel + sources XMLTV publiques), régénéré 4 fois par jour par GitHub Actions
 et publié sur GitHub Pages.
 
 - Guide : `https://fredy29840.github.io/iptv-epg/epg.xml.gz`
@@ -20,4 +20,4 @@ Secrets du dépôt : `IPTV_HOST`, `IPTV_USER`, `IPTV_PASS`.
 
 Lancement à la main : onglet Actions → EPG → Run workflow, ou `gh workflow run epg.yml`.
 
-Le fichier n'est pas publié s'il contient moins de 50 000 programmes : celui de la veille reste en ligne.
+Le fichier n'est pas publié s'il contient moins de 25 000 programmes : celui de la veille reste en ligne.
