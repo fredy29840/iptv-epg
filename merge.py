@@ -66,6 +66,9 @@ FILLER_MIN_PROGRAMS = 4
 # Titres de remplissage : ignorés (sinon des lignes « No Data » à la place de « Pas d'information »).
 PLACEHOLDER_TITLES = {"no data", "pas d'information", "no information", "no programme",
                       "cette chaîne ne fait plus partie des offres", "to be announced", "tba"}
+# Créneaux vides et séparateurs du panel (« TR - NO MATCH », « ##### FRENCH ##### », « US - UFC 03 : ») :
+# le panel leur colle des tvg-id sans rapport (« mgm.us » → un film dans le guide). Ignorés.
+PLACEHOLDER_NAME = re.compile(r"\bNO MATCH\b|#{4}|:\s*$", re.I)
 SYNTHETIC_PREFIX = "name:"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -232,7 +235,7 @@ def main():
     for s in live:
         name = s.get("name") or ""
         cid = (s.get("epg_channel_id") or "").strip() or synthetic_id(name)
-        if not cid:
+        if not cid or PLACEHOLDER_NAME.search(name):
             continue
         names_by_id.setdefault(cid, name)
         channel_ids[cid.lower()] = cid
