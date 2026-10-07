@@ -11,7 +11,8 @@ Même logique que XtreamRepository.syncXmlTv (côté télé), faite une fois pou
   - associations manuelles (manual.json) : id appli → id de chaîne d'une source ;
   - chaînes restées vides : créneaux d'événement et boucles 24/7, programme lu dans le nom.
 Sortie : seulement les chaînes du panel, fenêtre -6 h → +72 h (WINDOW_BEFORE_HOURS /
-WINDOW_AFTER_HOURS), ids = ceux de l'appli.
+WINDOW_AFTER_HOURS), ids = ceux de l'appli. Trois fichiers, à côté de --out : epg.xml.gz (tout le
+reste), epg-am.xml.gz (groupes « AM | … »), epg-vip.xml.gz (groupes « VIP… » et « For Adults »).
 
 Identifiants du panel par variables d'environnement (jamais dans le dépôt) :
   IPTV_HOST (ex. http://hote:port), IPTV_USER, IPTV_PASS
@@ -32,12 +33,35 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 UA = "VLC/3.0.18 LibVLC/3.0.18"
+# (url, portée) : portée = début du nom de groupe auquel la source est réservée, None = toutes
+# les chaînes. Une source américaine ne doit pas remplir « FR - DISNEY CHANNEL » par son nom.
 SOURCES = [
-    "https://xmltvfr.fr/xmltv/xmltv.xml.gz",
-    "https://iptv-epg.org/files/epg-fr.xml.gz",
-    "https://www.open-epg.com/files/france1.xml.gz",
-    "https://epgshare01.online/epgshare01/epg_ripper_FR1.xml.gz",
+    ("https://xmltvfr.fr/xmltv/xmltv.xml.gz", None),
+    ("https://iptv-epg.org/files/epg-fr.xml.gz", None),
+    ("https://www.open-epg.com/files/france1.xml.gz", None),
+    ("https://epgshare01.online/epgshare01/epg_ripper_FR1.xml.gz", None),
+    ("https://epgshare01.online/epgshare01/epg_ripper_US2.xml.gz", "AM | USA"),
+    ("https://epgshare01.online/epgshare01/epg_ripper_US_LOCALS1.xml.gz", "AM | USA"),
+    ("https://epgshare01.online/epgshare01/epg_ripper_CA2.xml.gz", "AM | CA"),
 ]
+# Un fichier par famille de groupes : la télé n'active que ceux qu'elle regarde.
+OUTPUTS = {"main": "epg.xml.gz", "am": "epg-am.xml.gz", "vip": "epg-vip.xml.gz"}
+
+
+def zone_of(group: str) -> str:
+    if group.startswith("AM |"):
+        return "am"
+    if group.startswith("VIP") or group == "For Adults":
+        return "vip"
+    return "main"
+
+
+# Sources à portée : ids « Pets.TV.HD.us2 », « WNCF-DT.us_locals1 ».
+SOURCE_SUFFIX = re.compile(r"\.(us|ca)[a-z_]*\d*$", re.I)
+# Indicatif d'une station locale dans le nom du panel : « US - ABC 32 MONTGOMERY AL (WNCF) HD ».
+PANEL_CALLSIGN = re.compile(r"\(([KWC][A-Z]{2,3})(?:-[A-Z]{2})?\)")
+# Canal principal d'une station côté source (pas les sous-canaux « WNCF-DT2 »).
+SOURCE_CALLSIGN = re.compile(r"^([KWC][A-Z]{2,3})(?:-(?:DT|TV|HD|CD|LD|D))?$")
 FILLER_MIN_PROGRAMS = 4
 # Titres de remplissage : ignorés (sinon des lignes « No Data » à la place de « Pas d'information »).
 PLACEHOLDER_TITLES = {"no data", "pas d'information", "no information", "no programme",
@@ -198,9 +222,13 @@ def main():
 
     # Chaînes du panel → ids appli + index par nom.
     live = json.loads(fetch(f"{host}/player_api.php?username={user}&password={pwd}&action=get_live_streams"))
+    cats = {str(c.get("category_id")): c.get("category_name") or ""
+            for c in json.loads(fetch(f"{host}/player_api.php?username={user}&password={pwd}&action=get_live_categories"))}
     names_by_id = {}                # id appli → nom (pour <display-name>)
     channel_ids = {}                # id minuscule → id appli
     by_name = {}                    # nom normalisé → {ids appli}
+    groups_by_id = {}               # id appli → {groupes}
+    by_callsign = {}                # indicatif → {ids appli}
     for s in live:
         name = s.get("name") or ""
         cid = (s.get("epg_channel_id") or "").strip() or synthetic_id(name)
@@ -208,9 +236,16 @@ def main():
             continue
         names_by_id.setdefault(cid, name)
         channel_ids[cid.lower()] = cid
+        groups_by_id.setdefault(cid, set()).add(cats.get(str(s.get("category_id")), ""))
         n = normalize(name)
         if n:
             by_name.setdefault(n, set()).add(cid)
+        call = PANEL_CALLSIGN.search(name.upper())
+        if call:
+            by_callsign.setdefault(call.group(1), set()).add(cid)
+
+    def in_scope(cid, scope):
+        return any(g.startswith(scope) for g in groups_by_id.get(cid, ()))
 
     manual_path = os.path.join(HERE, "manual.json")
     manual = json.load(open(manual_path)) if os.path.exists(manual_path) else {}
@@ -223,7 +258,8 @@ def main():
     stats = {"sources": []}
 
     panel_url = f"{host}/xmltv.php?username={user}&password={pwd}"
-    for url in [panel_url] + SOURCES:
+    callsign_served = set()         # ids appli déjà rattachés à une station par son indicatif
+    for url, scope in [(panel_url, None)] + SOURCES:
         is_panel = url == panel_url
         label = "panel" if is_panel else url
         ts = time.time()
@@ -244,7 +280,17 @@ def main():
                     targets = set(manual_by_source_id.get(sid.lower(), ()))
                     by_id = channel_ids.get(sid.lower())
                     names = set()
-                    for dn in [d.text or "" for d in el.findall("display-name")] + [sid]:
+                    labels = [d.text or "" for d in el.findall("display-name")] + [sid]
+                    if scope:
+                        base = SOURCE_SUFFIX.sub("", sid)
+                        labels += [base, base.replace(".", " ")]
+                        for dn in labels:
+                            call = SOURCE_CALLSIGN.match(dn.strip().upper())
+                            if call:    # un seul canal de la source par station
+                                fresh = by_callsign.get(call.group(1), set()) - callsign_served
+                                names |= fresh
+                                callsign_served |= fresh
+                    for dn in labels:
                         names |= by_name.get(normalize(dn), set())
                     # Le panel colle parfois un même tvg-id sur des chaînes sans rapport (« 01tv.fr »
                     # sur Cartoonito, Nickelodeon 4 Teen… alors que c'est Tech & Co) : si le nom
@@ -254,13 +300,15 @@ def main():
                     elif names:
                         targets |= names
                         by_name_hits += 1
+                if scope:
+                    targets = {t for t in targets if in_scope(t, scope)}
                 if targets:
                     src_to_app[sid] = targets
                 el.clear()
             elif el.tag == "programme":
                 sid = el.get("channel") or ""
                 targets = src_to_app.get(sid)
-                if targets is None and sid.lower() in channel_ids:
+                if targets is None and sid.lower() in channel_ids and not scope:
                     targets = {channel_ids[sid.lower()]}
                 start, stop = parse_time(el.get("start")), parse_time(el.get("stop"))
                 title = (el.findtext("title") or "").strip()
@@ -288,12 +336,6 @@ def main():
         print(json.dumps(st, ensure_ascii=False), file=sys.stderr)
 
     # Chaînes restées vides : créneaux d'événement et boucles 24/7, lus dans le nom.
-    try:
-        cats = {str(c.get("category_id")): c.get("category_name") or ""
-                for c in json.loads(fetch(f"{host}/player_api.php?username={user}&password={pwd}&action=get_live_categories"))}
-    except Exception as e:  # sans les groupes, seules les boucles 24/7 nommées ainsi sont reconnues
-        cats = {}
-        print(f"groupes : ERREUR {e}", file=sys.stderr)
     named = programmes_from_names(live, cats, set(programmes), now, win_start, win_end)
     programmes.update(named)
     st = {"source": "noms des chaînes", "programmes": sum(len(v) for v in named.values()), "chaines": len(named)}
@@ -304,26 +346,38 @@ def main():
     def fmt(dt):
         return dt.astimezone(timezone.utc).strftime("%Y%m%d%H%M%S +0000")
 
-    root = ET.Element("tv", {"generator-info-name": "iptv-epg-merge", "date": fmt(now)})
-    for cid in sorted(programmes):
-        ch = ET.SubElement(root, "channel", {"id": cid})
-        ET.SubElement(ch, "display-name").text = names_by_id.get(cid, cid)
-    total = 0
-    for cid in sorted(programmes):
-        for start, stop, title, desc in sorted(programmes[cid]):
-            p = ET.SubElement(root, "programme", {"start": fmt(start), "stop": fmt(stop), "channel": cid})
-            ET.SubElement(p, "title").text = title
-            if desc:
-                ET.SubElement(p, "desc").text = desc
-            total += 1
-    raw = ET.tostring(root, encoding="utf-8", xml_declaration=True)
-    with gzip.open(args.out, "wb", compresslevel=9) as f:
-        f.write(raw)
-    stats.update({"genere": fmt(now), "chaines": len(programmes), "programmes": total,
-                  "taille_octets": os.path.getsize(args.out), "duree_s": round(time.time() - t0, 1)})
+    def write(path, ids):
+        root = ET.Element("tv", {"generator-info-name": "iptv-epg-merge", "date": fmt(now)})
+        for cid in ids:
+            ch = ET.SubElement(root, "channel", {"id": cid})
+            ET.SubElement(ch, "display-name").text = names_by_id.get(cid, cid)
+        count = 0
+        for cid in ids:
+            for start, stop, title, desc in sorted(programmes[cid]):
+                p = ET.SubElement(root, "programme", {"start": fmt(start), "stop": fmt(stop), "channel": cid})
+                ET.SubElement(p, "title").text = title
+                if desc:
+                    ET.SubElement(p, "desc").text = desc
+                count += 1
+        with gzip.open(path, "wb", compresslevel=9) as f:
+            f.write(ET.tostring(root, encoding="utf-8", xml_declaration=True))
+        return count
+
+    # Un id partagé par des chaînes de plusieurs familles est écrit dans chacun de leurs fichiers.
+    out_dir = os.path.dirname(os.path.abspath(args.out))
+    total, files = 0, {}
+    for zone, filename in OUTPUTS.items():
+        path = args.out if zone == "main" else os.path.join(out_dir, filename)
+        ids = sorted(c for c in programmes if zone in {zone_of(g) for g in groups_by_id.get(c, ())})
+        count = write(path, ids)
+        total += count
+        files[os.path.basename(path)] = {"chaines": len(ids), "programmes": count, "taille_octets": os.path.getsize(path)}
+        print(f"→ {os.path.basename(path)} : {len(ids)} chaînes, {count} programmes, {os.path.getsize(path) // 1024} Ko",
+              file=sys.stderr)
+    stats.update({"genere": fmt(now), "chaines": len(programmes), "programmes": total, "fichiers": files,
+                  "duree_s": round(time.time() - t0, 1)})
     json.dump(stats, open(args.stats, "w"), ensure_ascii=False, indent=1)
-    print(f"→ {args.out} : {len(programmes)} chaînes, {total} programmes, "
-          f"{os.path.getsize(args.out) // 1024} Ko en {stats['duree_s']} s", file=sys.stderr)
+    print(f"total : {len(programmes)} chaînes, {total} programmes en {stats['duree_s']} s", file=sys.stderr)
 
 
 if __name__ == "__main__":
