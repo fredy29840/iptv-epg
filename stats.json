@@ -2,93 +2,93 @@
  "sources": [
   {
    "source": "panel",
-   "programmes": 34850,
-   "chaines": 1239,
+   "programmes": 32399,
+   "chaines": 1237,
    "par_nom": 0,
-   "bouche_trou": 38,
-   "secondes": 6.5
+   "bouche_trou": 29,
+   "secondes": 4.6
   },
   {
    "source": "https://xmltvfr.fr/xmltv/xmltv.xml.gz",
-   "programmes": 18032,
-   "chaines": 138,
+   "programmes": 17722,
+   "chaines": 135,
    "par_nom": 148,
-   "bouche_trou": 13,
-   "secondes": 8.1
+   "bouche_trou": 23,
+   "secondes": 4.0
   },
   {
    "source": "https://iptv-epg.org/files/epg-fr.xml.gz",
-   "programmes": 1662,
-   "chaines": 16,
+   "programmes": 1789,
+   "chaines": 26,
    "par_nom": 121,
-   "bouche_trou": 9,
-   "secondes": 2.2
+   "bouche_trou": 19,
+   "secondes": 1.5
   },
   {
    "source": "https://www.open-epg.com/files/france1.xml.gz",
-   "programmes": 358,
-   "chaines": 11,
+   "programmes": 231,
+   "chaines": 10,
    "par_nom": 144,
-   "bouche_trou": 4,
-   "secondes": 1.6
+   "bouche_trou": 3,
+   "secondes": 1.5
   },
   {
    "source": "https://epgshare01.online/epgshare01/epg_ripper_FR1.xml.gz",
-   "programmes": 618,
-   "chaines": 11,
+   "programmes": 759,
+   "chaines": 20,
    "par_nom": 200,
-   "bouche_trou": 8,
-   "secondes": 3.1
+   "bouche_trou": 16,
+   "secondes": 1.4
   },
   {
    "source": "https://epgshare01.online/epgshare01/epg_ripper_US2.xml.gz",
-   "programmes": 3058,
-   "chaines": 42,
+   "programmes": 3494,
+   "chaines": 39,
    "par_nom": 218,
-   "bouche_trou": 4,
-   "secondes": 3.9
+   "bouche_trou": 3,
+   "secondes": 2.0
   },
   {
    "source": "https://epgshare01.online/epgshare01/epg_ripper_US_LOCALS1.xml.gz",
-   "programmes": 30428,
+   "programmes": 34435,
    "chaines": 369,
-   "par_nom": 866,
+   "par_nom": 864,
    "bouche_trou": 1,
-   "secondes": 29.0
+   "secondes": 16.6
   },
   {
    "source": "https://epgshare01.online/epgshare01/epg_ripper_CA2.xml.gz",
-   "programmes": 2586,
+   "programmes": 2456,
    "chaines": 29,
    "par_nom": 167,
    "bouche_trou": 13,
-   "secondes": 3.5
+   "secondes": 1.9
   },
   {
    "source": "noms des chaînes",
-   "programmes": 10060,
-   "chaines": 1922
+   "programmes": 9301,
+   "chaines": 1163
   }
  ],
- "genere": "20261105212752 +0000",
- "chaines": 3732,
- "programmes": 101623,
+ "genere": "20261106104754 +0000",
+ "chaines": 2972,
+ "programmes": 102468,
  "fichiers": {
   "epg.xml.gz": {
    "chaines": 368,
-   "programmes": 23659,
-   "taille_octets": 1285617
+   "programmes": 23361,
+   "taille_octets": 1295304
   },
   "epg-am.xml.gz": {
-   "chaines": 3314,
-   "programmes": 76887,
-   "taille_octets": 2759289
+   "chaines": 2581,
+   "programmes": 78092,
+   "taille_octets": 2985839
   },
   "epg-vip.xml.gz": {
-   "chaines": 77,
-   "programmes": 1077,
-   "taille_octets": 60451
+   "chaines": 50,
+   "programmes": 1015,
+   "taille_octets": 56705
   }
  },
- "duree_s": 61.9
+ "duree_s": 36.8
 }
