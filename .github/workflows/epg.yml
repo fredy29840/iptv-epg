@@ -45,6 +45,37 @@ jobs:
           EOF
           cp stats.json public/stats.json
 
+      # Deuxième ligne (Rapido) : guide séparé dans public/rapido/, chargé seulement par le
+      # profil Rapido de l'appli. Panel parfois instable : un échec ne bloque pas la ligne
+      # principale, et on republie alors le guide Rapido précédent.
+      - name: Fusion Rapido
+        id: rapido
+        continue-on-error: true
+        env:
+          IPTV_HOST: ${{ secrets.RAPIDO_HOST }}
+          IPTV_USER: ${{ secrets.RAPIDO_USER }}
+          IPTV_PASS: ${{ secrets.RAPIDO_PASS }}
+        run: |
+          mkdir -p public/rapido
+          python3 merge.py --out public/rapido/epg.xml.gz --stats stats-rapido.json
+          python3 - <<'EOF'
+          import json, sys
+          s = json.load(open("stats-rapido.json"))
+          print(json.dumps(s, ensure_ascii=False, indent=1))
+          if s["programmes"] < 10000:
+              sys.exit(f"Rapido : seulement {s['programmes']} programmes")
+          EOF
+          cp stats-rapido.json public/rapido/stats.json
+
+      - name: Repli Rapido
+        if: steps.rapido.outcome != 'success'
+        run: |
+          rm -rf public/rapido && mkdir -p public/rapido
+          for f in epg.xml.gz epg-am.xml.gz epg-vip.xml.gz stats.json; do
+            curl -fsSL -o "public/rapido/$f" "https://fredy29840.github.io/iptv-epg/rapido/$f" || rm -f "public/rapido/$f"
+          done
+          ls -la public/rapido
+
       - uses: actions/upload-pages-artifact@v5
         with:
           path: public
@@ -58,5 +89,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add stats.json
+          [ -f stats-rapido.json ] && git add stats-rapido.json || true
           git diff --cached --quiet || git commit -m "stats $(date -u +%F)"
           git push
