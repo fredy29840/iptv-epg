@@ -370,6 +370,17 @@ def main():
             f.write(ET.tostring(root, encoding="utf-8", xml_declaration=True))
         return count
 
+    # KEEP_GROUPS (regex sur le nom de groupe) : ne publier que ces groupes. Sert à la ligne
+    # Rapido (tous pays, 6,9 Mo) : la TV n'a besoin que des groupes francophones et VIP.
+    keep = os.environ.get("KEEP_GROUPS")
+    if keep:
+        keep_re = re.compile(keep)
+        dropped = [c for c in programmes if not any(keep_re.search(g) for g in groups_by_id.get(c, ()))]
+        for c in dropped:
+            del programmes[c]
+        print(f"KEEP_GROUPS : {len(dropped)} chaînes écartées, {len(programmes)} gardées", file=sys.stderr)
+        stats["keep_groups"] = {"motif": keep, "ecartees": len(dropped)}
+
     # Un id partagé par des chaînes de plusieurs familles est écrit dans chacun de leurs fichiers.
     out_dir = os.path.dirname(os.path.abspath(args.out))
     total, files = 0, {}

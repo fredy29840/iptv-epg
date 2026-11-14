@@ -55,6 +55,8 @@ jobs:
           IPTV_HOST: ${{ secrets.RAPIDO_HOST }}
           IPTV_USER: ${{ secrets.RAPIDO_USER }}
           IPTV_PASS: ${{ secrets.RAPIDO_PASS }}
+          # Groupes francophones + événements VIP seulement (le panel couvre tous les pays).
+          KEEP_GROUPS: '^(EU \| FRANCE|24/7 \| FRENCH|AF \| AFRICA CANAL|AM \| CANADA FRAN|EU \| BELGIUM|EU \| SWITZERLAND|VIP \|)'
         run: |
           mkdir -p public/rapido
           python3 merge.py --out public/rapido/epg.xml.gz --stats stats-rapido.json
